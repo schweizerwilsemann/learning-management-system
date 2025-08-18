@@ -1,0 +1,15 @@
+{
+  "name": "lms-wrapper",
+  "private": true,
+  "workspaces": ["lms/*", "packages/*", "infra/*"],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "pnpm -r --parallel dev",
+    "lint": "pnpm -r lint",
+    "migrate": "pnpm --filter @lms/db migrate"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "@changesets/cli": "^2.27.0"
+  }
+}

@@ -1,0 +1,4 @@
+packages:
+  - "lms/*"          # lms-api, lms-ui, ai-worker, ....
+  - "packages/*"     # db, shared libs
+  - "infra/*"       # infrastructure

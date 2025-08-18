@@ -1,0 +1,14 @@
+{
+  "name": "@myorg/db",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "dependencies": {
+    "@prisma/client": "^6.14.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "prisma": "^6.14.0",
+    "typescript": "^5.3.3",
+    "zod": "^3.22.4"
+  }
+}

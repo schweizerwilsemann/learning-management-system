@@ -1,0 +1,698 @@
+// ---------- GENERATOR & DATASOURCE ----------
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = []
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- ENUMS ----------
+enum Role {
+  ADMIN
+  INSTRUCTOR
+  STUDENT
+}
+
+enum AssetKind {
+  VIDEO
+  PDF
+  IMAGE
+}
+
+enum AssetStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum PaymentProvider {
+  STRIPE
+  RAZORPAY
+  PAYOS
+  TEST
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum JobType {
+  TRANSCODE
+  TRANSCRIBE
+  EMBED
+  GRADE
+  MINT
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum CommentStatus {
+  ACTIVE
+  HIDDEN
+  FLAGGED
+  DELETED
+}
+
+enum AuditAction {
+  // User actions
+  USER_LOGIN
+  USER_LOGOUT
+  USER_REGISTER
+  USER_UPDATE_PROFILE
+  USER_UPDATE_PASSWORD
+  USER_ENABLE_2FA
+  USER_DISABLE_2FA
+
+  // Course actions
+  COURSE_CREATE
+  COURSE_UPDATE
+  COURSE_DELETE
+  COURSE_PUBLISH
+  COURSE_UNPUBLISH
+
+  // Enrollment actions
+  ENROLLMENT_CREATE
+  ENROLLMENT_DELETE
+
+  // Payment actions
+  PAYMENT_CREATE
+  PAYMENT_UPDATE_STATUS
+
+  // Admin actions
+  ADMIN_UPDATE_USER_ROLE
+}
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  PUSH
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SUPPRESSED  // bị tắt do user preference/digest
+}
+// ---------- USERS / AUTH ----------
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  emailVerified DateTime?        // <— thêm để support magic link/verify email
+  name      String?
+  image     String?
+  username  String?  @unique     // <— log in bằng username cũng được (tuỳ chọn)
+  role      Role     @default(STUDENT)
+
+  // NextAuth-compatible
+  accounts  Account[]
+  sessions  Session[]
+
+  // Domain relations
+  courses               Course[] @relation("CourseInstructor")
+  enrollments           Enrollment[]
+  comments              Comment[]
+  reports               CommentReport[]
+  wallets               Wallet[]
+  certificates          Certificate[]
+  notifications         Notification[]
+  notificationsActed    Notification[] @relation("NotificationActor")
+  twoFactorAuth         TwoFactorAuth?
+  twoFactorConfirmation TwoFactorConfirmation?
+  assets                Asset[]
+  payments              Payment[]
+  progresses            Progress[]
+  Purchase              Purchase[]
+
+  // NEW relations
+  profile               UserProfile?
+  credentials           Credentials?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([emailVerified])
+  @@index([role])
+  NotificationPreference NotificationPreference[]
+  PushDevice PushDevice[]
+}
+
+// (Giữ bộ NextAuth để linh hoạt — nếu không dùng thì bỏ migrations/account/session)
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+// ---------- 2FA ----------
+model TwoFactorAuth {
+  id        String  @id @default(cuid())
+  userId    String  @unique
+  secret    String
+  qrCodeUrl String
+  isEnabled Boolean @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TwoFactorConfirmation {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ---------- COURSE / LEARNING ----------
+model Course {
+  id          String       @id @default(cuid())
+  title       String
+  slug        String       @unique
+  description String?
+  priceCents  Int          @default(0)
+  status      CourseStatus @default(DRAFT)
+
+  instructorId String
+  instructor   User   @relation("CourseInstructor", fields: [instructorId], references: [id])
+
+  thumbnailId String? @unique
+  thumbnail   Asset?  @relation("CourseThumb", fields: [thumbnailId], references: [id])
+
+  modules      Module[]
+  lessons      Lesson[]
+  enrollments  Enrollment[]
+  comments     Comment[]        @relation("CourseComments")
+  certificates Certificate[]
+  payments     Payment[]
+  embeddings   EmbeddingChunk[]
+
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  Category   Category?    @relation(fields: [categoryId], references: [id])
+  categoryId String?
+  Attachment Attachment[]
+  Chapter    Chapter[]
+  Purchase   Purchase[]
+
+  @@index([instructorId])
+}
+
+model Module {
+  id       String @id @default(cuid())
+  courseId String
+  title    String
+  position Int    @default(0)
+
+  course  Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons Lesson[]
+
+  @@index([courseId, position])
+}
+
+model Lesson {
+  id          String    @id @default(cuid())
+  courseId    String
+  moduleId    String?
+  title       String
+  slug        String    @unique
+  content     String?
+  durationSec Int? // set bởi worker sau khi transcode
+  isFree      Boolean   @default(false)
+  publishedAt DateTime?
+
+  assetId String? @unique
+  asset   Asset?  @relation(fields: [assetId], references: [id])
+
+  course Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  module Module? @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+
+  progresses  Progress[]
+  transcripts LessonTranscript[]
+  embeddings  EmbeddingChunk[]
+  comments    Comment[]          @relation("LessonComments")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([courseId])
+  @@index([moduleId])
+}
+
+model Enrollment {
+  id        String   @id @default(cuid())
+  userId    String
+  courseId  String
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+}
+
+// Theo dõi tiến độ học
+model Progress {
+  id        String  @id @default(cuid())
+  userId    String
+  lessonId  String
+  completed Boolean @default(false)
+  position  Int? // giây hiện tại trong bài học
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, lessonId])
+}
+
+// ---------- MEDIA / ASSETS (MinIO/S3 + HLS) ----------
+model Asset {
+  id        String      @id @default(cuid())
+  ownerId   String
+  kind      AssetKind   @default(VIDEO)
+  key       String // uploads/<...>.mp4 (input)
+  hlsKey    String? // hls/<assetId>/master.m3u8 (output)
+  status    AssetStatus @default(PENDING)
+  sizeBytes Int?
+  duration  Int? // seconds
+
+  owner           User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  courseThumbnail Course? @relation("CourseThumb")
+  lesson          Lesson? // Back-relation for Lesson.asset
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([status])
+}
+
+// ---------- DISCUSSION / NOTIFY ----------
+model Comment {
+  id          String        @id @default(cuid())
+  courseId    String?
+  lessonId    String?
+  parentId    String?
+  authorId    String
+  body        String
+  mentions    String[]      @default([])
+  attachments Json?
+  reactions   Json?
+  status      CommentStatus @default(ACTIVE)
+  score       Int           @default(0)
+
+  course  Course?         @relation("CourseComments", fields: [courseId], references: [id], onDelete: Cascade)
+  lesson  Lesson?         @relation("LessonComments", fields: [lessonId], references: [id], onDelete: Cascade)
+  parent  Comment?        @relation("CommentParent", fields: [parentId], references: [id], onDelete: Cascade)
+  replies Comment[]       @relation("CommentParent")
+  reports CommentReport[]
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([courseId, createdAt])
+  @@index([lessonId, createdAt])
+  @@index([parentId])
+  @@index([score])
+}
+
+model CommentReport {
+  id         String   @id @default(cuid())
+  commentId  String
+  reporterId String
+  reason     String
+  createdAt  DateTime @default(now())
+
+  comment  Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  reporter User    @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+}
+
+
+// ---------- AI (TRANSCRIPT / EMBEDDINGS / QUIZ OPTIONAL) ----------
+model LessonTranscript {
+  id       String  @id @default(cuid())
+  lessonId String
+  language String? // "vi","en"
+  text     String
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([lessonId])
+}
+
+// Dùng Float[] để tránh lệ thuộc pgvector; nếu sau này muốn pgvector, đổi sang Unsupported("vector")
+model EmbeddingChunk {
+  id         String  @id @default(cuid())
+  courseId   String?
+  lessonId   String?
+  chunk      String
+  embedding  Float[]
+  // optional metadata
+  tokenCount Int?
+  source     String? // "transcript" | "pdf" | ...
+
+  course Course? @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson Lesson? @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([lessonId])
+  @@index([courseId])
+}
+
+// ---------- PAYMENTS ----------
+model Payment {
+  id          String          @id @default(cuid())
+  userId      String
+  courseId    String
+  provider    PaymentProvider @default(TEST)
+  externalId  String? // payment_intent_id / order_id ...
+  amountCents Int
+  currency    String          @default("VND")
+  status      PaymentStatus   @default(PENDING)
+  raw         Json?
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, courseId])
+}
+
+// ---------- BLOCKCHAIN (CERT / WALLET / HASH) ----------
+model Wallet {
+  id      String @id @default(cuid())
+  userId  String
+  address String @unique
+  chain   String // "polygon-mumbai", "base-sepolia", ...
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Certificate {
+  id       String   @id @default(cuid())
+  userId   String
+  courseId String
+  grade    Int?
+  issuedAt DateTime @default(now())
+
+  // on-chain proof (tuỳ chọn)
+  chain    String? // polygon/base...
+  tokenId  String?
+  txHash   String?
+  certHash String // keccak256/SHA256(hash of metadata JSON or PDF)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([userId, courseId])
+}
+
+// ---------- SYSTEM (JOBS, LOGS, CODES) ----------
+
+// For tracking background jobs (e.g., video processing, AI tasks)
+model JobLog {
+  id        String    @id @default(cuid())
+  type      JobType
+  refId     String? // assetId/lessonId/courseId/certificateId
+  status    JobStatus @default(QUEUED)
+  attempts  Int       @default(0)
+  lastError String?
+  payload   Json?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([type, status, createdAt])
+}
+
+// For tracking important system and user actions
+model AuditLog {
+  id         String      @id @default(cuid())
+  actorId    String?
+  actorType  String? // "User", "System"
+  action     AuditAction
+  entityType String? // "Course", "User", "Payment"
+  entityId   String?
+  before     Json?
+  after      Json?
+  ipAddress  String?
+  createdAt  DateTime    @default(now())
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+}
+
+// For storing generic, non-relational data or settings
+model CodeType {
+  id          String  @id
+  description String?
+  codes       Code[]
+}
+
+model Code {
+  id         String    @id @default(cuid())
+  codeTypeId String
+  ownerId    String
+  ownerType  String // e.g. "User", "System"
+  value      String
+  expiresAt  DateTime?
+  metadata   Json?
+
+  codeType CodeType @relation(fields: [codeTypeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId, ownerType])
+  @@index([codeTypeId])
+}
+
+// ---------- From lms-ui schema ----------
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  courses   Course[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Attachment {
+  id        String   @id @default(uuid())
+  name      String
+  url       String
+  courseId  String?
+  course    Course?  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([courseId])
+}
+
+model Chapter {
+  id                String   @id @default(uuid())
+  title             String
+  description       String?
+  resolutions       String[]
+  isVideoProcessing Boolean  @default(false)
+  position          Int
+  isPublished       Boolean  @default(false)
+  isFree            Boolean  @default(false)
+  courseId          String
+  course            Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([courseId])
+}
+
+model Purchase {
+  id        String   @id @default(uuid())
+  userId    String
+  courseId  String
+  price     Float
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([courseId])
+}
+model UserProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  displayName String?
+  handle      String?  @unique // @khoa, slug ngắn gọn
+  bio         String?
+  avatarUrl   String?
+  coverUrl    String?
+  location    String?
+  links       Json?              // { github, x, facebook, website, ... }
+  preferences Json?              // tuỳ chọn UI/learning
+  birthday    DateTime?
+  gender      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([handle])
+}
+
+/// Cho email/password song song với OAuth (Account)
+model Credentials {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  // Lưu hash bằng Argon2id/BCrypt, TUYỆT ĐỐI không lưu plaintext
+  passwordHash       String
+  passwordUpdatedAt  DateTime @default(now())
+  // Cho reset password (tùy chọn)
+  resetToken         String?  @unique
+  resetTokenExpires  DateTime?
+  lastLoginAt        DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+
+model Notification {
+  id         String   @id @default(cuid())
+  userId     String
+  actorId    String?              // ai gây ra sự kiện (tuỳ loại)
+  type       String               // ex: "COURSE_ENROLLED", "COMMENT_REPLY", ...
+  title      String?              // text hiển thị nhanh
+  body       String?              // text chi tiết (ngắn)
+  data       Json?                // payload tuỳ loại (courseId, commentId, …)
+  linkUrl    String?              // deeplink
+  seenAt     DateTime?
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  actor  User?  @relation("NotificationActor", fields: [actorId], references: [id])
+
+  deliveries Delivery[]           // lịch sử gửi đa kênh
+
+  @@index([userId, createdAt])
+  @@index([type])
+}
+model Delivery {
+  id              String              @id @default(cuid())
+  notificationId  String
+  channel         NotificationChannel
+  status          DeliveryStatus      @default(PENDING)
+  attempts        Int                 @default(0)
+  providerMsgId   String?
+  lastError       String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([channel, status])
+}
+
+model NotificationPreference {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  // Mặc định: INSTANT cho in-app, DAILY digest cho email, PUSH bật nếu có token
+  inAppEnabled  Boolean  @default(true)
+  emailEnabled  Boolean  @default(true)
+  pushEnabled   Boolean  @default(false)
+  emailDigest   String   @default("INSTANT") // INSTANT | DAILY | WEEKLY
+  quietHours    Json?                    // {"start":"22:00","end":"07:00","tz":"Asia/Ho_Chi_Minh"}
+  perType       Json?                    // {"COMMENT_REPLY":{"email":true,"push":true}, ...}
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PushDevice {
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique           // Web Push subscription JSON (stringify) hoặc FCM token
+  platform   String?                    // "web", "android", "ios"
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/**
+ * Outbox pattern: ghi sự kiện rồi worker gửi đi (chống mất noti khi crash)
+ */
+model OutboxEvent {
+  id         String   @id @default(cuid())
+  topic      String                // "NOTIFICATION.CREATED"
+  payload    Json
+  processedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([topic, processedAt])
+}

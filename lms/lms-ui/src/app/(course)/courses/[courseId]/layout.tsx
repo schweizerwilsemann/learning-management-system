@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import prisma from "@/lib/prisma";
+import api from '@/lib/apiClient';
 import CourseSidebar from "@/components/courses/CourseSidebar";
 import CourseNavbar from "@/components/courses/CourseNavbar";
 import { getServerSession } from "next-auth";
@@ -14,21 +14,10 @@ export default async function CourseLayout({
     params: { courseId: string },
 }) {
 
-    const course = await prisma.course.findUnique({
-        where: {
-            id: params.courseId,
-        },
-        include: {
-            chapters: {
-                where: {
-                    isPublished: true,
-                },
-                orderBy: {
-                    position: "asc",
-                }
-            }
-        },
-    });
+    // Fetch course from backend API (includes published chapters and attachments)
+    const courseRes = await api.get(`/courses/${params.courseId}`);
+    const courseData = courseRes?.data;
+    const course = courseData?.course || null;
 
     if (!course) {
         return redirect("/");
@@ -36,28 +25,26 @@ export default async function CourseLayout({
 
     const session = await getServerSession(authOptions);
 
-    const isPurchased = await prisma.purchase.findFirst({
-        where: {
-            courseId: params.courseId,
-            // @ts-expect-error
-            userId: session?.user?.id
-        },
-        select: {
-            id: true,
-        }
-    });
+    // backend already returns isPurchased flag; if not present, derive from API
+    let isPurchased = courseData?.isPurchased ?? false;
+    // if not provided by API and we have a session user, ask backend explicitly
+    const sessionUserId = (session?.user as any)?.id;
+    if (!isPurchased && sessionUserId) {
+        const p = await api.get(`/courses/${params.courseId}?userId=${sessionUserId}`);
+        isPurchased = !!p?.data?.isPurchased;
+    }
 
     return (
         <div className="h-full">
             <div className="h-20 md:pl-80 fixed inset-y-0 w-full z-50">
                 <CourseNavbar
-                    course={course}
+                    course={course as any}
                     isPurchased={(session && isPurchased) ? true : false}
                 />
             </div>
             <div className="hidden md:flex h-full w-80 flex-col fixed inset-y-0 z-50">
                 <CourseSidebar
-                    course={course}
+                    course={course as any}
                     isPurchased={(session && isPurchased) ? true : false}
                 />
             </div>

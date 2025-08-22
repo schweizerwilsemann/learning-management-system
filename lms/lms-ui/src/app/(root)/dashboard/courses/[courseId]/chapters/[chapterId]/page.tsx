@@ -8,18 +8,14 @@ import ChapterAccessForm from "@/components/chapters/ChapterAccessForm";
 import ChapterAddVideoForm from "@/components/chapters/ChapterAddVideoForm";
 import ChapterActions from "@/components/chapters/ChapterActions";
 import Banner from "@/components/shared/Banner";
-import prisma from "@/lib/prisma";
+import api from '@/lib/apiClient';
 
 
 const ChapterIdPage = async ({ params }: { params: { chapterId: string, courseId: string } }) => {
 
 
-    const chapter = await prisma.chapter.findUnique({
-        where: {
-            id: params.chapterId,
-            courseId: params.courseId,
-        }
-    });
+    const res = await api.get(`/chapters/${params.chapterId}`);
+    const chapter = res?.data?.chapter;
 
     if (!chapter) {
         return redirect("/");

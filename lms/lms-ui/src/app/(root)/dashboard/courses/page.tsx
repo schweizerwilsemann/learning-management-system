@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import prisma from "@/lib/prisma";
+import api from '@/lib/apiClient';
 import DataTable, { columns } from "@/components/courses/DataTable";
 
 export const metadata: Metadata = {
@@ -8,11 +8,8 @@ export const metadata: Metadata = {
 
 const CoursesPage = async () => {
 
-    const courses = await prisma.course.findMany({
-        orderBy: {
-            createdAt: "desc"
-        }
-    });
+    const res = await api.get('/courses');
+    const courses = res?.data?.courses || [];
 
     return (
         <div className="p-6">

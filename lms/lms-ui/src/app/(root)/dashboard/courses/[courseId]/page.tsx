@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft, File, IndianRupee, LayoutDashboard, ListChecks } from "lucide-react";
-import prisma from "@/lib/prisma";
+import api from '@/lib/apiClient';
 import IconBadge from "@/components/shared/IconBadge";
 import TitleForm from "@/components/courses/TitleForm";
 import DescriptionForm from "@/components/courses/DescriptionForm";
@@ -15,32 +15,10 @@ import Banner from "@/components/shared/Banner";
 
 const CoursePage = async ({ params }: { params: { courseId: string } }) => {
 
-    const course = await prisma.course.findUnique({
-        where: {
-            id: params.courseId,
-        },
-        include: {
-            chapters: {
-                orderBy: {
-                    position: "asc"
-                }
-            },
-            attachments: {
-                orderBy: {
-                    createdAt: "asc"
-                },
-            },
-            thumbnail: {
-                select: { key: true }
-            }
-        },
-    });
-
-    const categories = await prisma.category.findMany({
-        orderBy: {
-            name: "asc"
-        }
-    });
+    const courseRes = await api.get(`/courses/${params.courseId}`);
+    const course = courseRes?.data?.course;
+    const categoriesRes = await api.get('/categories');
+    const categories = categoriesRes?.data || [];
 
     if (!course) {
         return redirect("/");
@@ -59,7 +37,7 @@ const CoursePage = async ({ params }: { params: { courseId: string } }) => {
         (course as any).imageUrl || course.thumbnail?.key || course.attachments?.length > 0,
         displayPrice,
         course.categoryId,
-        course.chapters.some((chapter) => chapter.isPublished),
+    course.chapters.some((chapter: any) => chapter.isPublished),
     ];
 
     const totalFeilds = requiredFeilds.length;
@@ -120,7 +98,7 @@ const CoursePage = async ({ params }: { params: { courseId: string } }) => {
                         <CategoryForm
                             courseId={course.id}
                             initialData={course}
-                            options={categories.map((category) => ({
+                            options={categories.map((category: any) => ({
                                 label: category.name,
                                 value: category.id,
                             }))}

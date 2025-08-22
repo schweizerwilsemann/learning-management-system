@@ -1,8 +1,9 @@
 import { Metadata } from "next";
-import prisma from "@/lib/prisma";
+// prisma removed: backend API used instead
 import CoursesList from "@/components/courses/CoursesList";
 import SearchInput from "@/components/shared/SearchInput";
 import CategoryItem from "@/components/categories/CategoryItem";
+import api from '@/lib/apiClient';
 
 export const metadata: Metadata = {
   title: `Home - ${process.env.NEXT_PUBLIC_APP_NAME || 'Aadarsh Guru'}`,
@@ -17,63 +18,25 @@ interface HomePageProps {
 
 const HomePage = async ({ searchParams }: HomePageProps) => {
 
-  const categories = await prisma.category.findMany({
-    orderBy: {
-      createdAt: "desc"
-    },
-    include: {
-      courses: {
-        where: {
-          status: "PUBLISHED"
-        },
-        select: {
-          id: true
-        }
-      }
-    }
-  });
+  // Use axios api client for backend requests (server-side)
+  const categoriesRes = await api.get('/categories');
+  const categoriesData = categoriesRes?.data;
+  const categoriesWithCoursesCountFormatted = Array.isArray(categoriesData)
+    ? categoriesData
+    : [];
 
-  const categoriesWithCoursesCountFormatted = categories.map(category => ({
-    ...category,
-    courses: category.courses.length
-  }));
-
-  const courses = await prisma.course.findMany({
-    where: {
-      status: "PUBLISHED",
-      title: {
-        contains: searchParams.title,
-      },
-      categoryId: searchParams.categoryId,
-    },
-    include: {
-      category: true,
-      thumbnail: {
-        select: {
-          key: true
-        }
-      },
-      attachments: {
-        orderBy: { createdAt: 'asc' }
-      },
-        chapters: {
-        where: {
-          isPublished: true
-        },
-        select: {
-          id: true
-        },
-      },
-    },
-    orderBy: {
-      createdAt: "desc"
-    }
-  });
+  const params = new URLSearchParams();
+  params.set('status', 'PUBLISHED');
+  if (searchParams.title) params.set('title', searchParams.title);
+  if (searchParams.categoryId) params.set('categoryId', searchParams.categoryId);
+  const coursesRes = await api.get(`/courses?${params.toString()}`);
+  const coursesJson = coursesRes?.data;
+  const courses = coursesJson?.courses || coursesJson || [];
 
   // normalize fields expected by existing components: imageUrl and price
   const s3Bucket = process.env.S3_BUCKET_NAME;
   const s3Endpoint = process.env.S3_ENDPOINT;
-  const coursesNormalized = courses.map((c) => {
+  const coursesNormalized = (courses as any[]).map((c: any) => {
     let imageUrl: string | null = null;
     if ((c as any).imageUrl) imageUrl = (c as any).imageUrl; // legacy fallback
     else if (c.thumbnail?.key && s3Bucket) imageUrl = `${s3Endpoint?.replace(/\/$/, '') || `https://${s3Bucket}.s3.amazonaws.com`}/${c.thumbnail.key}`;

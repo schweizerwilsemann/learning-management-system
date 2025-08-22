@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "../ui/input";
 import { deleteMediaAction } from "@/actions/media";
 import uploadMedia from "@/lib/upload";
+import axios from 'axios';
 import { updateChapterAction } from "@/actions/chapters";
 import { cn } from "@/lib/utils";
 import VideoPlayer from "../shared/VideoPlayer";
@@ -39,17 +40,11 @@ const ChapterAddVideoForm = ({ initialData, chapterId, courseId }: ChapterAddVid
             if (file) {
                 const mediaUrl = await uploadMedia(file, `courses/chapters/${chapterId}`);
                 if (mediaUrl) {
-                    const response = await fetch(process.env.NEXT_PUBLIC_TRANSCODE_URL as string, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            videoUrl: mediaUrl,
-                            onSuccessEndpoint: `${process.env.NEXT_PUBLIC_APP_URL}/api/transcode/success`,
-                        })
-                    });
-                    if (response.ok) {
+                    const response = await axios.post(process.env.NEXT_PUBLIC_TRANSCODE_URL as string, {
+                        videoUrl: mediaUrl,
+                        onSuccessEndpoint: `${process.env.NEXT_PUBLIC_APP_URL}/api/transcode/success`,
+                    }, { headers: { 'Content-Type': 'application/json' } });
+                    if (response.status >= 200 && response.status < 300) {
                         const { success } = await updateChapterAction(chapterId, courseId, { isVideoProcessing: true });
                         if (success) {
                             router.refresh();

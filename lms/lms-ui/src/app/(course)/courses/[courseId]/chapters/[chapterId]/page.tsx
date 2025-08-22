@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import authOptions from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import api from '@/lib/apiClient';
 import Preview from "@/components/shared/Preview";
 import VideoPlayer from "@/components/shared/VideoPlayer";
 
@@ -13,16 +13,8 @@ interface ChapterIdPageProps {
 };
 
 export async function generateMetadata({ params }: ChapterIdPageProps) {
-    const chapter = await prisma.chapter.findUnique({
-        where: {
-            id: params.chapterId,
-            courseId: params.courseId,
-        },
-        select: {
-            title: true,
-            description: true,
-        }
-    })
+    const res = await api.get(`/chapters/${params.chapterId}`);
+    const chapter = res?.data?.chapter;
     return {
         title: `${chapter?.title}`,
         description: `${chapter?.description}`,
@@ -31,13 +23,8 @@ export async function generateMetadata({ params }: ChapterIdPageProps) {
 
 const ChaperIdPage = async ({ params }: ChapterIdPageProps) => {
 
-    const chapter = await prisma.chapter.findUnique({
-        where: {
-            id: params.chapterId,
-            courseId: params.courseId,
-            isPublished: true,
-        }
-    });
+    const res = await api.get(`/chapters/${params.chapterId}`);
+    const chapter = res?.data?.chapter;
 
     if (!chapter) {
         return redirect("/");
@@ -45,18 +32,9 @@ const ChaperIdPage = async ({ params }: ChapterIdPageProps) => {
 
     const session = await getServerSession(authOptions);
 
-    const isPurchased = await prisma.purchase.findFirst({
-        where: {
-            courseId: params.courseId,
-            // @ts-expect-error
-            userId: session?.user?.id
-        },
-        select: {
-            id: true,
-        }
-    });
+    const isPurchased = res?.data?.isPurchased;
 
-    if (!chapter.isFree && !isPurchased) {
+    if (!chapter?.isFree && !isPurchased) {
         return redirect("/");
     };
 

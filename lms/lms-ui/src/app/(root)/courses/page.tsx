@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import prisma from "@/lib/prisma";
+import api from '@/lib/apiClient';
 import authOptions from "@/lib/auth";
 import CoursesList from "@/components/courses/CoursesList";
 import Banner from "@/components/shared/Banner";
@@ -18,41 +18,12 @@ const CoursesPage = async () => {
         return redirect("/");
     }
 
-    const userPurchases = await prisma.purchase.findMany({
-        where: {
-            // @ts-expect-error
-            userId: session.user?.id,
-        },
-        select: {
-            courseId: true,
-        },
-    });
-
-    // Extract course IDs from user's purchases
-    const courseIds = userPurchases.map(purchase => purchase.courseId);
-
-    // Fetch courses based on the extracted course IDs
-    const courses = await prisma.course.findMany({
-        where: {
-            id: {
-                in: courseIds,
-            },
-        },
-        include: {
-            category: true,
-            chapters: {
-                where: {
-                    isPublished: true,
-                },
-                select: {
-                    id: true,
-                },
-            },
-        },
-        orderBy: {
-            createdAt: "desc",
-        },
-    });
+    const sessionUserId = (session?.user as any)?.id;
+    if (!sessionUserId) return redirect('/');
+    const purchasesRes = await api.get(`/users/${sessionUserId}/purchases`);
+    const courseIds: string[] = purchasesRes?.data || [];
+    const coursesRes = await api.get(`/courses?ids=${courseIds.join(',')}`);
+    const courses = coursesRes?.data?.courses || [];
 
     return (
         <>

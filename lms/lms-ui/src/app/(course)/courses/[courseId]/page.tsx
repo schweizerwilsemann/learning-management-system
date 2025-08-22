@@ -2,7 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { getServerSession } from "next-auth";
 import { BookOpen, CheckCircle, File, IndianRupee } from "lucide-react";
-import prisma from "@/lib/prisma";
+import api from '@/lib/apiClient';
 import authOptions from "@/lib/auth";
 import IconBadge from "@/components/shared/IconBadge";
 import { Button } from "@/components/ui/button";
@@ -16,15 +16,8 @@ interface CourseIdPageProps {
 };
 
 export async function generateMetadata({ params }: CourseIdPageProps) {
-    const course = await prisma.course.findUnique({
-        where: {
-            id: params.courseId,
-        },
-        select: {
-            title: true,
-            description: true,
-        }
-    })
+    const res = await api.get(`/courses/${params.courseId}`);
+    const course = res?.data?.course;
     return {
         title: `${course?.title}`,
         description: `${course?.description}`,
@@ -35,40 +28,10 @@ const CourseIdPage = async ({ params }: CourseIdPageProps) => {
 
     const session = await getServerSession(authOptions);
 
-    const isPurchased = await prisma.purchase.findFirst({
-        where: {
-            courseId: params.courseId,
-            // @ts-expect-error
-            userId: session?.user?.id
-        },
-        select: {
-            id: true,
-        }
-    });
-
-    const course = await prisma.course.findUnique({
-        where: {
-            id: params.courseId,
-        },
-        include: {
-            chapters: {
-                where: {
-                    isPublished: true
-                },
-                orderBy: {
-                    position: "asc"
-                },
-            },
-            attachments: {
-                orderBy: {
-                    createdAt: "asc"
-                }
-            },
-            thumbnail: {
-                select: { key: true }
-            }
-        },
-    });
+    const sessionUserId = (session?.user as any)?.id;
+    const courseRes = await api.get(`/courses/${params.courseId}${sessionUserId ? `?userId=${sessionUserId}` : ''}`);
+    const isPurchased = !!courseRes?.data?.isPurchased;
+    const course = courseRes?.data?.course;
 
     const displayPrice = course ? Math.round((course.priceCents ?? 0) / 100) : 0;
 
@@ -128,7 +91,7 @@ const CourseIdPage = async ({ params }: CourseIdPageProps) => {
                         <h3 className="font-bold text-xl lg:text-2xl text-black/80" >Course Assets</h3>
                     </div>
                     <div className="mt-4">
-                        {course?.attachments?.map((attachment, index) => (
+                        {course?.attachments?.map((attachment: any, index: number) => (
                             <div className="mt-2 flex items-center p-3 w-full bg-sky-100 border-sky-200 border text-sky-700 rounded-md" key={index}>
                                 <File className="h-4 w-4 mr-2 flex-shrink-0" />
                                 <a href={attachment.url} target="_blank" rel="noreferrer" className="text-sky-700 text-sm line-clamp-1">{attachment.name}</a>

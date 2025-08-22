@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import prisma from "@/lib/prisma";
+import api from '@/lib/apiClient';
 import CategoriesTable, { columns } from "@/components/categories/CategoriesTable";
 
 export const metadata: Metadata = {
@@ -8,25 +8,11 @@ export const metadata: Metadata = {
 
 const CategoriesPage = async () => {
 
-    const categories = await prisma.category.findMany({
-        orderBy: {
-            createdAt: "desc"
-        },
-        include: {
-            courses: {
-                where: {
-                    status: 'PUBLISHED'
-                },
-                select: {
-                    id: true
-                }
-            }
-        }
-    });
-
-    const categoriesWithCoursesCountFormatted = categories.map(category => ({
+    const res = await api.get('/categories');
+    const categories = res?.data || [];
+    const categoriesWithCoursesCountFormatted = categories.map((category: any) => ({
         ...category,
-        courses: category.courses.length
+        courses: category.courses?.length || 0
     }));
 
     return (

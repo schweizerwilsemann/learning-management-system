@@ -7,7 +7,7 @@ import AuthProvider from '@/providers/AuthProvider';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: process.env.NEXT_PUBLIC_APP_NAME || 'Aadarsh Guru',
+  title: process.env.NEXT_PUBLIC_APP_NAME || 'UTC2 LMS',
   description: 'Next LMS app is an LMS platfrom to sell and market courses and digital asests. built usingnext js 14.',
   keywords: ['nextjs', 'lms', 'courses', 'digital assets', 'marketplace', 'aadarsh guru', 'aadarsh', 'guru', 'aadarsh guru lms'],
 };

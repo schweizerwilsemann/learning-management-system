@@ -1,6 +1,6 @@
 import { AuthOptions } from "next-auth";
 import GoogleProvider from 'next-auth/providers/google';
-import prisma from '@/lib/prisma';
+import api from './apiClient';
 
 const authOptions: AuthOptions = {
     providers: [
@@ -10,43 +10,30 @@ const authOptions: AuthOptions = {
         }),
     ],
     callbacks: {
-        async signIn({ user }) {
-            try {
-                if (user?.email) {
-                    const exist = await prisma.user.findUnique({
-                        where: {
-                            email: user?.email
-                        }
-                    })
-                    if (!exist) {
-                        await prisma.user.create({
-                            data: {
-                                name: user?.name!,
-                                email: user?.email,
-                                image: user?.image!,
-                                role: 'STUDENT'
-                            }
+            async signIn({ user }) {
+                try {
+                    if (user?.email) {
+                        // Ask backend to find or create the user
+                        const res = await api.post('/auth/find-or-create', {
+                            email: user.email,
+                            name: user.name,
+                            image: user.image,
                         });
+                        return !!res?.data;
                     }
-                    return true;
-                } else {
-                    return false
+                    return false;
+                } catch (error: any) {
+                    return false;
                 }
-            } catch (error: any) {
-                return false;
-            }
         },
         async session({ session, }) {
             try {
-                const exist = await prisma.user.findUnique({
-                    where: {
-                        email: session.user?.email!
-                    }
-                });
+                const res = await api.post('/auth/find-or-create', { email: session.user?.email });
+                const exist = res?.data;
                 if (exist) {
                     // @ts-ignore
                     session.user.id = exist.id;
-                    // @ts-expect-error
+                    // @ts-ignore
                     session.user.role = (exist?.email === String(process.env.GMAIL_MAIL_USER_ID) ? "ADMIN" : exist?.role);
                 }
                 return session;

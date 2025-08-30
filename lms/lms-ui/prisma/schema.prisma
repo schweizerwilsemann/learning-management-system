@@ -39,6 +39,7 @@ enum PaymentProvider {
   STRIPE
   RAZORPAY
   PAYOS
+  VNPAY
   TEST
 }
 

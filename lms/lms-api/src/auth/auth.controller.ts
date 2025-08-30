@@ -61,6 +61,16 @@ export class AuthController {
     return req.user;
   }
 
+  @Post('get-token')
+  @ApiOperation({ summary: 'Get JWT token for authenticated user' })
+  async getToken(@Body() body: { email: string }) {
+    const user = await this.authService.findUserByEmail(body.email);
+    if (!user) {
+      throw new Error('User not found');
+    }
+    return this.authService.login(user);
+  }
+
   @Post('find-or-create')
   @ApiOperation({ summary: 'Find or create user (used by NextAuth callbacks)' })
   async findOrCreate(@Body() body: { email: string; name?: string; image?: string }) {
@@ -69,15 +79,26 @@ export class AuthController {
     const usersService = (this.authService as any)?.usersService;
     if (usersService) {
       const exist = await usersService.findByEmail(email);
-      if (exist) return exist;
-      return usersService.create({ email, name, image });
+      if (exist) {
+        // Return user with JWT token
+        const loginResult = await this.authService.login(exist);
+        return { ...exist, ...loginResult };
+      }
+      const newUser = await usersService.create({ email, name, image });
+      const loginResult = await this.authService.login(newUser);
+      return { ...newUser, ...loginResult };
     }
     // Fallback: try prisma via authService
     const prisma = (this.authService as any)?.prisma;
     if (prisma) {
       const user = await prisma.user.findUnique({ where: { email } });
-      if (user) return user;
-      return prisma.user.create({ data: { email, name, image, role: 'STUDENT' } });
+      if (user) {
+        const loginResult = await this.authService.login(user);
+        return { ...user, ...loginResult };
+      }
+      const newUser = await prisma.user.create({ data: { email, name, image, role: 'STUDENT' } });
+      const loginResult = await this.authService.login(newUser);
+      return { ...newUser, ...loginResult };
     }
     return { email, name, image };
   }

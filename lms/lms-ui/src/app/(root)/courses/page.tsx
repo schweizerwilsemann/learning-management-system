@@ -1,35 +1,84 @@
-import { Metadata } from "next";
-import { getServerSession } from "next-auth";
-import { redirect } from "next/navigation";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import api from '@/lib/apiClient';
-import authOptions from "@/lib/auth";
+import { useJWT } from '@/hooks/useJWT';
 import CoursesList from "@/components/courses/CoursesList";
 import Banner from "@/components/shared/Banner";
 
-export const metadata: Metadata = {
-    title: `Courses - ${process.env.NEXT_PUBLIC_APP_NAME || 'Aadarsh Guru'}`,
-};
+const CoursesPage = () => {
+    const { data: session, status } = useSession();
+    const { isTokenLoaded } = useJWT();
+    const router = useRouter();
+    const [courses, setCourses] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
 
-const CoursesPage = async () => {
+    useEffect(() => {
+        if (status === "loading" || !isTokenLoaded) return;
 
-    const session = await getServerSession(authOptions);
+        if (!session) {
+            router.push("/");
+            return;
+        }
 
-    if (!session) {
-        return redirect("/");
+        const sessionUserId = (session?.user as any)?.id;
+        if (!sessionUserId) {
+            router.push("/");
+            return;
+        }
+
+        const fetchCourses = async () => {
+            try {
+                setLoading(true);
+                const purchasesRes = await api.get(`/users/${sessionUserId}/purchases`);
+                const courseIds: string[] = purchasesRes?.data || [];
+                
+                if (courseIds.length > 0) {
+                    const coursesRes = await api.get(`/courses?ids=${courseIds.join(',')}`);
+                    setCourses(coursesRes?.data?.courses || []);
+                } else {
+                    setCourses([]);
+                }
+            } catch (error: any) {
+                console.error('Error loading courses:', error);
+                setError("Error loading courses. Please try again later.");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchCourses();
+    }, [session, status, isTokenLoaded, router]);
+
+    if (status === "loading" || loading || !isTokenLoaded) {
+        return (
+            <div className="px-6 pb-6 pt-2">
+                <div className="flex items-center justify-center h-64">
+                    <div className="text-lg">Loading...</div>
+                </div>
+            </div>
+        );
     }
 
-    const sessionUserId = (session?.user as any)?.id;
-    if (!sessionUserId) return redirect('/');
-    const purchasesRes = await api.get(`/users/${sessionUserId}/purchases`);
-    const courseIds: string[] = purchasesRes?.data || [];
-    const coursesRes = await api.get(`/courses?ids=${courseIds.join(',')}`);
-    const courses = coursesRes?.data?.courses || [];
+    if (error) {
+        return (
+            <>
+                <Banner label={error} />
+                <div className="px-6 pb-6 pt-2">
+                    <CoursesList items={[]} isCoursesPage={true} />
+                </div>
+            </>
+        );
+    }
 
     return (
         <>
             {courses.length === 0 && (
                 <Banner
-                    label="You have't purchased any course yet, purchase courses to see here."
+                    label="You haven't purchased any course yet, purchase courses to see here."
                 />
             )}
             <div className="px-6 pb-6 pt-2">
@@ -39,7 +88,7 @@ const CoursesPage = async () => {
                 />
             </div>
         </>
-    )
+    );
 };
 
 export default CoursesPage;

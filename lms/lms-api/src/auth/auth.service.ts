@@ -87,4 +87,10 @@ export class AuthService {
 
     return this.login(user);
   }
+
+  async findUserByEmail(email: string) {
+    return this.prisma.user.findUnique({
+      where: { email },
+    });
+  }
 }

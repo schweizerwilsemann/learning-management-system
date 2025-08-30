@@ -21,10 +21,9 @@ interface CourseEnrollButtonProps {
     price: number;
     courseId: string;
     children: React.ReactNode;
-};
+}
 
 const CourseEnrollButton: React.FC<CourseEnrollButtonProps> = ({ price, courseId, children }) => {
-
     const [openDialog, setOpenDialog] = useState<boolean>(false);
     const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -35,51 +34,6 @@ const CourseEnrollButton: React.FC<CourseEnrollButtonProps> = ({ price, courseId
     const [isVeryfying, setIsVeryfying] = useState<boolean>(false);
     const [loading, setLoading] = useState<boolean>(false);
 
-    useEffect(() => {
-        const script = document.createElement('script');
-        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-        script.async = true;
-        document.body.appendChild(script);
-        return () => {
-            document.body.removeChild(script);
-        };
-    }, []);
-
-    const paymentHandlerFunction = async (response: any) => {
-        setIsVeryfying(true);
-        try {
-            const { success, message } = await verifyPaymentAction({
-                paymentId: response.razorpay_payment_id,
-                orderId: response.razorpay_order_id,
-                signature: response.razorpay_signature,
-                courseId,
-            });
-            if (success) {
-                window.location.reload();
-                router.push(`/courses/${courseId}`);
-                return toast({
-                    title: message,
-                });
-            }
-            else {
-                return toast({
-                    title: message,
-                    variant: "destructive",
-                });
-            }
-        } catch (error: any) {
-            console.log(error);
-            return toast({
-                title: error.message,
-                variant: "destructive",
-            });
-        } finally {
-            setLoading(false);
-            setIsVeryfying(false);
-        };
-    };
-
-
     const handleCheckout = async () => {
         if (session.status !== 'authenticated') {
             setOpenDialog(true);
@@ -87,35 +41,30 @@ const CourseEnrollButton: React.FC<CourseEnrollButtonProps> = ({ price, courseId
         }
         setLoading(true);
         try {
-            const { success, order } = await checkoutAction(price);
+            const sessionUserId = (session?.data?.user as any)?.id;
+            if (!sessionUserId) {
+                return toast({
+                    title: "User not found. Please sign in again.",
+                    variant: "destructive",
+                });
+            }
+
+            const response = await checkoutAction(price, courseId, sessionUserId);
+            const { success, order } = response.data;
             if (!success) {
                 return toast({
                     title: "Something went wrong.",
                     variant: "destructive",
                 });
             }
-            if (typeof window !== 'undefined') {
-                // @ts-expect-error
-                const rzp = new window.Razorpay({
-                    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-                    amount: order.amount,
-                    name: process.env.NEXT_PUBLIC_APP_NAME || 'Aadarsh Guru',
-                    currency: order.currency,
-                    order_id: order.id,
-                    handler: paymentHandlerFunction,
-                    prefill: {
-                        name: session?.data?.user?.name,
-                        email: session?.data?.user?.email,
-                        contact: session?.data?.user?.email,
-                    },
-                });
-                rzp.open();
-                rzp.on('payment.failed', function () {
-                    rzp.close();
-                    return toast({
-                        title: "Payment failed.",
-                        variant: "destructive",
-                    });
+
+            // Redirect to VNPay payment page
+            if (order?.paymentUrl) {
+                window.location.href = order.paymentUrl;
+            } else {
+                return toast({
+                    title: "Payment URL not generated.",
+                    variant: "destructive",
                 });
             }
         } catch (error: any) {
@@ -130,7 +79,6 @@ const CourseEnrollButton: React.FC<CourseEnrollButtonProps> = ({ price, courseId
     };
 
     const onSignIn = async (method: 'google') => {
-        setIsLoading(true);
         try {
             await signIn(method, {
                 redirect: false
@@ -139,68 +87,64 @@ const CourseEnrollButton: React.FC<CourseEnrollButtonProps> = ({ price, courseId
         } catch (error) {
             console.log(error);
             toast({
-                title: serachParams.get('error') || 'somethiong went wrong.',
+                title: serachParams.get('error') || 'Something went wrong.',
                 variant: "destructive",
             });
-        } finally {
-            setIsLoading(false);
         }
     };
 
     return (
         <>
             <Button
-                type="button"
                 onClick={handleCheckout}
-                disabled={loading || isVeryfying}
+                disabled={loading}
+                className="w-full md:w-auto"
             >
-                {(loading || isVeryfying) ? (
+                {loading ? (
                     <>
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        {loading && 'Processing..'}
-                        {isVeryfying && 'Verifying..'}
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processing...
                     </>
                 ) : (
-                    <>
-                        {children}
-                    </>
+                    children
                 )}
             </Button>
-            <Dialog open={openDialog} onOpenChange={() => setOpenDialog(false)} >
-                <DialogContent className="max-w-sm" >
+
+            <Dialog open={openDialog} onOpenChange={setOpenDialog}>
+                <DialogContent>
                     <DialogHeader>
-                        <DialogTitle className="text-center" >Sign in</DialogTitle>
-                        <DialogDescription className="text-center" >
-                            To continue to the platform.
+                        <DialogTitle>
+                            Sign in to continue
+                        </DialogTitle>
+                        <DialogDescription>
+                            You need to be signed in to purchase this course.
                         </DialogDescription>
                     </DialogHeader>
-                    <DialogFooter className="py-4" >
+                    <DialogFooter className="flex flex-col gap-4">
                         <Button
                             onClick={() => onSignIn('google')}
-                            className={cn(
-                                "w-full flex items-center justify-center gap-x-2",
-                                isLoading && "cursor-not-allowed"
-                            )}
-                            variant={'outline'}
                             disabled={isLoading}
+                            className="w-full"
                         >
                             {isLoading ? (
-                                <Loader2 className="h-5 w-5 animate-spin" />
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Loading...
+                                </>
                             ) : (
-                                <Image
-                                    src="/google.svg"
-                                    alt="Google logo"
-                                    width={20}
-                                    height={20}
-                                    className="mr-2 h-5 w-5"
-                                />
+                                <>
+                                    <Image
+                                        src="/google.svg"
+                                        alt="Google"
+                                        width={20}
+                                        height={20}
+                                        className="mr-2"
+                                    />
+                                    Continue with Google
+                                </>
                             )}
-                            Continue with google
                         </Button>
                     </DialogFooter>
-                    <div className="text-xs text-gray-700 text-center">
-                        By creating an account, you agree to our Terms of Service and Privacy Policy.
-                    </div>
                 </DialogContent>
             </Dialog>
         </>

@@ -6,8 +6,8 @@ export class CheckoutController {
   constructor(private readonly checkoutService: CheckoutService) {}
 
   @Post('order')
-  async createOrder(@Body() body: { amount: number }) {
-    return this.checkoutService.createOrder(body.amount);
+  async createOrder(@Body() body: { amount: number; courseId: string; userId: string }) {
+    return this.checkoutService.createOrder(body.amount, body.courseId, body.userId);
   }
 
   @Post('verify')

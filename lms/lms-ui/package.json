@@ -32,7 +32,7 @@
     "cmdk": "^0.2.1",
     "lucide-react": "^0.343.0",
     "next": "14.0.3",
-    "next-auth": "^4.24.6",
+    "next-auth": "^4.24.11",
     "query-string": "^9.0.0",
     "razorpay": "^2.9.2",
     "react": "^18",
@@ -47,7 +47,7 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "^20.19.11",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.0.1",

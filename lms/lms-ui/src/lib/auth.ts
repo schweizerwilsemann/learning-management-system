@@ -1,6 +1,33 @@
 import { AuthOptions } from "next-auth";
 import GoogleProvider from 'next-auth/providers/google';
-import api from './apiClient';
+import api, { setBearerToken } from './apiClient';
+
+// Utility function to clear JWT token
+export const clearJWTToken = () => {
+  setBearerToken(null);
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('jwt_token');
+  }
+};
+
+// Utility function to refresh JWT token
+export const refreshJWTToken = async (email: string) => {
+  try {
+    const response = await api.post('/auth/get-token', { email });
+    if (response?.data?.access_token) {
+      const token = response.data.access_token;
+      setBearerToken(token);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('jwt_token', token);
+      }
+      return token;
+    }
+  } catch (error) {
+    console.error('Error refreshing JWT token:', error);
+    clearJWTToken();
+  }
+  return null;
+};
 
 const authOptions: AuthOptions = {
     providers: [
@@ -19,6 +46,16 @@ const authOptions: AuthOptions = {
                             name: user.name,
                             image: user.image,
                         });
+                        
+                        // Store JWT token if available
+                        if (res?.data?.access_token) {
+                            setBearerToken(res.data.access_token);
+                            // Store token in localStorage for persistence
+                            if (typeof window !== 'undefined') {
+                                localStorage.setItem('jwt_token', res.data.access_token);
+                            }
+                        }
+                        
                         return !!res?.data;
                     }
                     return false;
@@ -35,6 +72,15 @@ const authOptions: AuthOptions = {
                     session.user.id = exist.id;
                     // @ts-ignore
                     session.user.role = (exist?.email === String(process.env.GMAIL_MAIL_USER_ID) ? "ADMIN" : exist?.role);
+                    
+                    // Store JWT token if available
+                    if (exist?.access_token) {
+                        setBearerToken(exist.access_token);
+                        // Store token in localStorage for persistence
+                        if (typeof window !== 'undefined') {
+                            localStorage.setItem('jwt_token', exist.access_token);
+                        }
+                    }
                 }
                 return session;
             } catch (error: any) {

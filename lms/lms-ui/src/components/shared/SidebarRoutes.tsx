@@ -57,10 +57,12 @@ const SidebarRoutes = () => {
     const isAdmin = session.data?.user?.role === "ADMIN";
     const isDashboard = pathname.startsWith("/dashboard");
 
-    const routes = isAuthenticated ?
-        ((isAdmin && isDashboard) ? adminRoutes : userRoutes)
-        :
-        guestsRoutes;
+    // While session is loading, avoid rendering protected navigation.
+    const isLoading = session.status === 'loading';
+
+    const routes = !isAuthenticated
+        ? guestsRoutes
+        : (isAdmin ? adminRoutes : userRoutes);
 
     const onClick = () => {
         if (isDashboard) {
@@ -72,7 +74,7 @@ const SidebarRoutes = () => {
 
     return (
         <div className="flex flex-col w-full">
-            {isAdmin && (
+            {isAdmin && !isLoading && (
                 <Button
                     type="button"
                     className={cn(

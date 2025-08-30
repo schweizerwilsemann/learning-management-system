@@ -27,8 +27,14 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get user purchases (course ids)' })
   getPurchases(@Param('id') id: string, @Req() req) {
+    // Debug: log user identity and requested id
+    // eslint-disable-next-line no-console
+    console.log('[GET purchases] req.user=', req.user, ' requested id=', id);
+
     // Ensure user can only access their own purchases
     if (req.user.id !== id) {
+      // eslint-disable-next-line no-console
+      console.log('[GET purchases] unauthorized: req.user.id=', req.user.id, ' id=', id);
       throw new UnauthorizedException('You can only access your own purchases');
     }
     return this.usersService.getUserPurchases(id);

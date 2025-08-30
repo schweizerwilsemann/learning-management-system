@@ -16,7 +16,11 @@ const SidebarItem = ({ icon: Icon, label, href }: SidebarItemProps) => {
     const isActive = (pathname === "/" && href === "/") || pathname === href;
 
     const onClick = () => {
-        router.push(href);
+    // debug: log navigation attempts so we can see clicks in browser console
+    // when users report navigation does not occur.
+    // eslint-disable-next-line no-console
+    console.log('SidebarItem click, navigating to', href);
+    router.push(href);
     };
 
     return (

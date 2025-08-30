@@ -41,7 +41,7 @@ const authOptions: AuthOptions = {
                 try {
                     if (user?.email) {
                         // Ask backend to find or create the user
-                        const res = await api.post('/auth/find-or-create', {
+                            const res = await api.post('/auth/find-or-create', {
                             email: user.email,
                             name: user.name,
                             image: user.image,
@@ -60,6 +60,8 @@ const authOptions: AuthOptions = {
                     }
                     return false;
                 } catch (error: any) {
+                    // eslint-disable-next-line no-console
+                    console.error('signIn: backend find-or-create failed', error);
                     return false;
                 }
         },
@@ -70,9 +72,14 @@ const authOptions: AuthOptions = {
                 if (exist) {
                     // @ts-ignore
                     session.user.id = exist.id;
+
+                    // Prefer the role returned by the backend. Avoid implicitly
+                    // mapping an env var to ADMIN here because that can cause
+                    // accidental elevation if the env var is misconfigured.
+                    // Fall back to STUDENT when role is missing.
                     // @ts-ignore
-                    session.user.role = (exist?.email === String(process.env.GMAIL_MAIL_USER_ID) ? "ADMIN" : exist?.role);
-                    
+                    session.user.role = exist?.role ?? 'STUDENT';
+
                     // Store JWT token if available
                     if (exist?.access_token) {
                         setBearerToken(exist.access_token);
@@ -81,10 +88,18 @@ const authOptions: AuthOptions = {
                             localStorage.setItem('jwt_token', exist.access_token);
                         }
                     }
+
+                    // Debug: log backend user payload so UI role rendering can be inspected
+                    // eslint-disable-next-line no-console
+                    console.debug('session backend user:', exist);
                 }
                 return session;
             } catch (error: any) {
-                throw new Error(error.message);
+                // Preserve and log full error for easier debugging
+                // eslint-disable-next-line no-console
+                console.error('session callback failed:', error);
+                // Re-throw to let NextAuth surface the error properly
+                throw error;
             }
         },
     },

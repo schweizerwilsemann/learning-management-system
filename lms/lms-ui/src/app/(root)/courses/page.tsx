@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import api from '@/lib/apiClient';
+import { getBearerToken } from '@/lib/apiClient';
+import { refreshJWTToken } from '@/lib/auth';
 import { useJWT } from '@/hooks/useJWT';
 import CoursesList from "@/components/courses/CoursesList";
 import Banner from "@/components/shared/Banner";
@@ -20,19 +22,37 @@ const CoursesPage = () => {
         if (status === "loading" || !isTokenLoaded) return;
 
         if (!session) {
-            router.push("/");
+            // Don't force a redirect. Show a friendly message and allow the UI
+            // to render so a user can sign in or understand why there are no courses.
+            setError("Please sign in to view your purchased courses.");
+            setLoading(false);
             return;
         }
 
         const sessionUserId = (session?.user as any)?.id;
         if (!sessionUserId) {
-            router.push("/");
+            setError("Unable to determine user identity. Please sign in again.");
+            setLoading(false);
             return;
         }
 
         const fetchCourses = async () => {
             try {
                 setLoading(true);
+                // debug: log session and in-memory token
+                // eslint-disable-next-line no-console
+                console.log('fetchCourses: session, bearerToken', session, getBearerToken());
+
+                // If no in-memory token, try refreshing once
+                if (!getBearerToken() && session?.user?.email) {
+                    // eslint-disable-next-line no-console
+                    console.log('fetchCourses: attempting refreshJWTToken fallback');
+                    await refreshJWTToken((session?.user as any).email);
+                    // eslint-disable-next-line no-console
+                    console.log('fetchCourses: after refresh, bearerToken=', getBearerToken());
+                }
+                // Request the purchases for the authenticated user using their id.
+                // The backend validates `req.user.id` against this id.
                 const purchasesRes = await api.get(`/users/${sessionUserId}/purchases`);
                 const courseIds: string[] = purchasesRes?.data || [];
                 

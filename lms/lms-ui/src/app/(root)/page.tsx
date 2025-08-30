@@ -4,6 +4,9 @@ import CoursesList from "@/components/courses/CoursesList";
 import SearchInput from "@/components/shared/SearchInput";
 import CategoryItem from "@/components/categories/CategoryItem";
 import api from '@/lib/apiClient';
+import { getServerSession } from 'next-auth';
+import authOptions from '@/lib/auth';
+import { refreshJWTToken } from '@/lib/auth';
 
 export const metadata: Metadata = {
   title: `Home - ${process.env.NEXT_PUBLIC_APP_NAME || 'Aadarsh Guru'}`,
@@ -18,20 +21,51 @@ interface HomePageProps {
 
 const HomePage = async ({ searchParams }: HomePageProps) => {
 
+  // If we have a logged-in next-auth session on the server, try to obtain a
+  // backend JWT for server-side requests so protected endpoints don't return 401.
+  try {
+    const session = await getServerSession(authOptions as any);
+    const s = session as any;
+    if (s?.user?.email) {
+      // attempt to refresh/get a JWT for this server request
+      await refreshJWTToken(s.user.email);
+    }
+  } catch (err) {
+    // ignore - we'll handle errors when calling the API below
+    // eslint-disable-next-line no-console
+    console.debug('No server session or failed to refresh JWT:', err);
+  }
+
   // Use axios api client for backend requests (server-side)
-  const categoriesRes = await api.get('/categories');
-  const categoriesData = categoriesRes?.data;
-  const categoriesWithCoursesCountFormatted = Array.isArray(categoriesData)
-    ? categoriesData
-    : [];
+  let categoriesWithCoursesCountFormatted: any[] = [];
+  try {
+    const categoriesRes = await api.get('/categories');
+    const categoriesData = categoriesRes?.data;
+    categoriesWithCoursesCountFormatted = Array.isArray(categoriesData) ? categoriesData : [];
+  } catch (err) {
+    // Log server-side so the build/render doesn't crash on 401 or other errors
+    // Keep categories list empty as a graceful fallback
+    // eslint-disable-next-line no-console
+    console.error('Failed to load categories:', err);
+    categoriesWithCoursesCountFormatted = [];
+  }
 
   const params = new URLSearchParams();
   params.set('status', 'PUBLISHED');
   if (searchParams.title) params.set('title', searchParams.title);
   if (searchParams.categoryId) params.set('categoryId', searchParams.categoryId);
-  const coursesRes = await api.get(`/courses?${params.toString()}`);
-  const coursesJson = coursesRes?.data;
-  const courses = coursesJson?.courses || coursesJson || [];
+  let courses: any[] = [];
+  try {
+    const coursesRes = await api.get(`/courses?${params.toString()}`);
+    const coursesJson = coursesRes?.data;
+    courses = coursesJson?.courses || coursesJson || [];
+  } catch (err) {
+    // Log server-side so the build/render doesn't crash on 401 or other errors
+    // Return empty list of courses as a graceful fallback
+    // eslint-disable-next-line no-console
+    console.error('Failed to load courses:', err);
+    courses = [];
+  }
 
   // normalize fields expected by existing components: imageUrl and price
   const s3Bucket = process.env.S3_BUCKET_NAME;

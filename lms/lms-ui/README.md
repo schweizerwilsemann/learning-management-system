@@ -1,6 +1,6 @@
 # LMS Platform
 
-Welcome to Eduflex our Learning Management System (LMS) platform! This project is built with Next.js, Tailwind CSS, and TypeScript, providing a visually appealing, SEO-friendly, and secure environment for online learning.
+Welcome to UTC2-LMS our Learning Management System (LMS) platform! This project is built with Next.js, Tailwind CSS, and TypeScript, providing a visually appealing, SEO-friendly, and secure environment for online learning.
 
 ## Features
 

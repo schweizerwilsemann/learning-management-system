@@ -15,7 +15,7 @@ const Sidebar = async () => {
                         className="rounded-full border-2 border-sky-700 border-opacity-75"
                         src={'/logo.png'}
                     />
-                    <h2 className="text-xl font-bold text-sky-700 text-opacity-75" >EduFlex</h2>
+                    <h2 className="text-xl font-bold text-sky-700 text-opacity-75" >UTC2</h2>
                 </Link>
             </div>
             <div className="flex flex-col w-full">
